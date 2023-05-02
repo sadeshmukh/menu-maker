@@ -183,7 +183,7 @@ messages = [] # Only if needed to pass back into get_response
 messages.append(response.choices[0].message["content"])
 
 counter = 0
-CHARS_RESPONSE_KEPT = 4000 # Change if necessary
+CHARS_RESPONSE_KEPT = 3000 # Change if necessary
 while response.choices[0].finish_reason == "length":
     messages[-1] = messages[-1][:-CHARS_RESPONSE_KEPT]
     if counter > 3:
@@ -211,7 +211,7 @@ if response.choices[0].finish_reason != "stop":
     exit()
 else:
     try:
-        parsed_response = json.loads(total_response.choices[0].message["content"])
+        parsed_response = json.loads(total_response)
         print("Here is your menu:")
 
 
