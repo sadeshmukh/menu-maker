@@ -20,7 +20,7 @@ def is_no(user_input):
 
 use_default = is_yes(input("Do you want to use the default options? (y/N) "))
 if use_default:
-    days = 2
+    days = 3
     meals = 3
     bool_user_options = {"dairy": True, "protein": True, "veggies": True, "carbs": True, "fruits": True, "fats": True}
     time_of_day = "breakfast, lunch, and dinner"
@@ -106,6 +106,8 @@ print("-" * 80)
 
 system_message = "You are a food expert who is making a menu for a client. The client has the following requirements:"
 
+tokens = 0
+
 prompt = f"""
 You want to make a menu for {days} days for {time_of_day}. Each day should have around {meals} meals. 
 {'The meal should be vegetarian.' if vegetarian else ''}
@@ -147,19 +149,26 @@ Under key `cost` should be the total cost of the menu in cents.
 You will not prefix or suffix the output with anything.
 Do NOT, AT ANY POINT, use unnecessary spaces or newlines to indent your JSON.
 """
+prompt_continuation = f"""
+Continue as much as you can. Your previous responses have been trimmed to 4000 characters.
+"""
 loading_message = "Loading..."
 print(loading_message, end="", flush=True)
 start_time = datetime.now()
 
-def get_response():
+def get_response(messages=[]):
+    messages = list(sum(map(lambda message: ({"role": "assistant", "content": message}, {"role": "user", "content": prompt_continuation}), messages), ())) if messages else []
     response = openai.ChatCompletion.create(
     model="gpt-3.5-turbo",
-    messages=[{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
+    messages=[{"role": "system", "content": system_message}, {"role": "user", "content": prompt}] + messages,
 )
+    global tokens
+    tokens += response["usage"]["total_tokens"]
     return response
 
 
 response = get_response()
+total_response = response.choices[0].message["content"]
 end_time = datetime.now()
 
 time_taken = end_time - start_time
@@ -168,20 +177,41 @@ print("\b" * len(loading_message), end="", flush=True)
 print(" " * len(loading_message), end="", flush=True)
 print("\b" * len(loading_message), end="", flush=True)
 
-print(f"Response time: {floor(time_taken.seconds/60)}:{time_taken.seconds%60}.")
+print(f"Response time: {floor(time_taken.seconds/60)}:{str(time_taken.seconds%60).ljust(2, '0')}.", end="\n", flush=True)
 
-print("\n")
+messages = [] # Only if needed to pass back into get_response
+messages.append(response.choices[0].message["content"])
+
+counter = 0
+CHARS_RESPONSE_KEPT = 4000 # Change if necessary
+while response.choices[0].finish_reason == "length":
+    messages[-1] = messages[-1][:-CHARS_RESPONSE_KEPT]
+    if counter > 3:
+        print("The response was too long.")
+        break
+    counter += 1
+    loading_message = f"Loading... {counter + 1}."
+    print(loading_message, end="", flush=True)
+    start_time = datetime.now()
+    response = get_response(messages)
+    end_time = datetime.now()
+    time_taken = end_time - start_time
+    print("\b" * len(loading_message), end="", flush=True)
+    print(" " * len(loading_message), end="", flush=True)
+    print("\b" * len(loading_message), end="", flush=True)
+    print(f"{counter + 1}. Response time: {floor(time_taken.seconds/60)}:{str(time_taken.seconds%60).ljust(2, '0')}.", end="\n")
+    total_response += response.choices[0].message["content"]
+    messages.append(response.choices[0].message["content"])
+
+print("\n\n")
 
 if response.choices[0].finish_reason != "stop":
-    if response.choices[0].finish_reason == "length":
-        print("The response was too long.")
-    else:
-        print("The response was not stopped properly.")
+    print("The response was not stopped properly.")
     inspect(response)
     exit()
 else:
     try:
-        parsed_response = json.loads(response.choices[0].message["content"])
+        parsed_response = json.loads(total_response.choices[0].message["content"])
         print("Here is your menu:")
 
 
@@ -211,4 +241,4 @@ else:
         print(response.choices[0].message["content"])
 
 
-rprint(f"Prompt cost: {response['usage']['total_tokens']/5000} cents.")
+rprint(f"Prompt cost: {tokens/5000} cents.")
